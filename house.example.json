@@ -1,0 +1,20 @@
+{
+  "_comment": "Copy to house/house.json (gitignored) to bake your household's defaults into your own builds. Every key is optional and can still be changed per tablet from the phone setup page. Lists can be JSON arrays or newline-separated strings.",
+  "dash_layout": "kitchen",
+  "dash_main": "light.kitchen",
+  "dash_rooms": ["light.living_room", "light.dining_room", "switch.porch"],
+  "dash_shop": "todo.shopping_list",
+  "dash_weather": "weather.forecast_home",
+  "dash_flights": "sensor.flightradar24_current_in_area",
+  "dash_keep": ["light.kitchen", "light.bedroom"],
+  "dash_trash_day": 3,
+  "dash_birthdays": "calendar.birthdays",
+  "dash_alarm_switch": "switch.bedroom_alarm_1",
+  "dash_alarm_time": "time.bedroom_alarm_1_time",
+  "dash_people": ["person.alex=calendar.alex,calendar.work;todo.alex", "person.sam=calendar.sam;todo.sam"],
+  "dash_lists": ["todo.alex", "todo.shopping_list"],
+  "dash_calendars": ["calendar.alex", "calendar.work"],
+  "dash_climate": "climate.thermostat",
+  "dash_room_sensor": "sensor.bedroom_temperature",
+  "dash_map_tiles": ""
+}

@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Android 11+ package visibility: Settings opens Obtainium. -->
+    <queries>
+        <package android:name="dev.imranr.obtainium.fdroid" />
+        <package android:name="dev.imranr.obtainium" />
+    </queries>
+    <application
+        android:label="Goathouse Kiosk"
+        android:icon="@drawable/ic_kiosk"
+        android:allowBackup="false"
+        android:usesCleartextTraffic="true"
+        android:networkSecurityConfig="@xml/network"
+        android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen"
+        android:supportsRtl="true">
+        <activity
+            android:name=".HomeActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:clearTaskOnLaunch="true"
+            android:stateNotNeeded="true"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation"
+            android:windowSoftInputMode="stateAlwaysHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+        <activity android:name=".ControlsActivity" android:exported="false" android:windowSoftInputMode="stateAlwaysHidden|adjustPan"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
+        <activity android:name=".FlightsActivity" android:exported="false" android:configChanges="orientation|screenSize|screenLayout" />
+        <activity android:name=".RadarActivity" android:exported="false" android:configChanges="orientation|screenSize|screenLayout" />
+        <activity android:name=".SettingsActivity" android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout" />
+        <activity android:name=".SetupActivity" android:exported="false" android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout" />
+        <activity android:name=".BriefActivity" android:exported="false" android:launchMode="singleTask"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustPan" android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
+        <activity android:name=".CastActivity" android:exported="false" android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
+        <activity android:name=".JellyfinLinkActivity" android:exported="false" android:windowSoftInputMode="adjustPan"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
+        <activity android:name=".GoatprintEnrollActivity" android:exported="false" android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
+        <activity android:name=".GoatprintTestActivity" android:exported="false" android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
+        <!-- reader plugged in: Android grants standing USB permission ("use by default") and the engine picks it up -->
+        <activity android:name=".GoatprintUsbActivity" android:exported="true" android:theme="@android:style/Theme.NoDisplay"
+            android:excludeFromRecents="true" android:noHistory="true">
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <meta-data android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" android:resource="@xml/goatprint_device" />
+        </activity>
+        <service android:name=".SendspinService" android:exported="false" android:foregroundServiceType="mediaPlayback" />
+        <receiver android:name=".BootReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

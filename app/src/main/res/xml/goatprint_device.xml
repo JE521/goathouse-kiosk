@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Suprema BioMini Slim (16d1:0407) -->
+    <usb-device vendor-id="5841" product-id="1031" />
+</resources>

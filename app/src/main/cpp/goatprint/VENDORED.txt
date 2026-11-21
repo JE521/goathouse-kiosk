@@ -1,0 +1,2 @@
+Vendored from goatprint (the open-source BioMini fingerprint core) at commit dbfde57: core/include, core/src/image.c + match.c, core/third_party/nbis.
+Only the image normaliser and the NBIS matcher are used; USB runs in Java (GoatprintReader).
