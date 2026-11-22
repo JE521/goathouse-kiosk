@@ -83,6 +83,7 @@ public final class SendspinService extends Service implements SendspinClient.Lis
         Log.i(TAG, "service created");
         Jellyfin.get(this).start();      // Jellyfin cast target rides on this always-on service
         Goatprint.get(this).start();     // fingerprint reader (if one is plugged in) is read on its own thread
+        GoatprintNode.get(this).start(); // goatprint MQTT: signed events to HA, shared enrollments in
         Notification.Builder b;
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationManager nm = getSystemService(NotificationManager.class);

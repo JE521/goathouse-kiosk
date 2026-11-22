@@ -198,7 +198,7 @@ public class HomeActivity extends Activity implements Ha.Listener, Timers.Listen
         slp.leftMargin = u(140); slp.bottomMargin = u(40);
         root.addView(status, slp);
 
-        root.setOnClickListener(v -> startActivity(new Intent(this, dash.hallway() ? BriefActivity.class : ControlsActivity.class)));
+        root.setOnClickListener(v -> startActivity(new Intent(this, dash.hallway() ? WhoActivity.class : ControlsActivity.class)));
 
         night = nightLayer();
         night.setVisibility(View.GONE);
@@ -274,7 +274,7 @@ public class HomeActivity extends Activity implements Ha.Listener, Timers.Listen
         Style.shade(tMore);
         tMore.setPadding(0, u(12), 0, 0);
         col.addView(tMore);
-        col.setOnClickListener(v -> startActivity(new Intent(this, dash.hallway() ? BriefActivity.class : ControlsActivity.class)));
+        col.setOnClickListener(v -> startActivity(new Intent(this, dash.hallway() ? WhoActivity.class : ControlsActivity.class)));
         return col;
     }
 
@@ -299,7 +299,7 @@ public class HomeActivity extends Activity implements Ha.Listener, Timers.Listen
         npArtist.setSingleLine(true);
         col.addView(npTitle); col.addView(npArtist);
         c.addView(col, new LinearLayout.LayoutParams(0, -2, 1));
-        c.setOnClickListener(v -> startActivity(new Intent(this, dash.hallway() ? BriefActivity.class : ControlsActivity.class)));
+        c.setOnClickListener(v -> startActivity(new Intent(this, dash.hallway() ? WhoActivity.class : ControlsActivity.class)));
         return c;
     }
 

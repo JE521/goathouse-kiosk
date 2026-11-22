@@ -48,6 +48,14 @@ public class GoatprintTestActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        if (getIntent().getBooleanExtra("selftest", false)) {      // crypto/serialiser check against goatprint's test vectors
+            new Thread(() -> {
+                String r = GoatprintNode.selfTest(this);
+                android.util.Log.i("GoatprintSelfTest", r.replace("\n", " | "));
+                runOnUiThread(() -> text.setText(r));
+            }).start();
+            return;
+        }
         begin();
     }
 

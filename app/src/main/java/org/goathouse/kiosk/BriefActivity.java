@@ -40,6 +40,8 @@ public class BriefActivity extends Activity implements Ha.Listener {
     private String person;
     private String finger;
     private LinearLayout avatars, events, tasks, home;
+    private HomeActivity.WeatherIcon wxIcon;
+    private TextView wxTemp, wxCond, wxInside, wxUnit;
     private TextView source, hello, line, tasksCount;
     private EditText addTask;
     private final Handler h = new Handler(Looper.getMainLooper());
@@ -147,6 +149,7 @@ public class BriefActivity extends Activity implements Ha.Listener {
         events.setOrientation(LinearLayout.VERTICAL);
         esv.addView(events);
         left.addView(esv, new LinearLayout.LayoutParams(-1, 0, 1));
+        left.addView(weatherCard(), new LinearLayout.LayoutParams(-1, -2));
         grid.addView(left, new LinearLayout.LayoutParams(0, -1, 1.25f));
 
         // right: tasks + home now
@@ -217,9 +220,71 @@ public class BriefActivity extends Activity implements Ha.Listener {
         for (String id : ids) if (id.startsWith("person.")) people = true;
         if (people) renderHome();
         if (ids.contains(dash.personTodo(person))) loadTasks();
+        if (ids.contains(dash.weather()) || ids.contains(dash.roomSensor())) renderWeather();
+    }
+
+    /** Outside weather + the indoor sensor, in this person's unit (tap °F / °C to switch, remembered per person). */
+    private LinearLayout weatherCard() {
+        LinearLayout c = card();
+        c.setOrientation(LinearLayout.HORIZONTAL);
+        c.setGravity(Gravity.CENTER_VERTICAL);
+        wxIcon = new HomeActivity.WeatherIcon(this);
+        c.addView(wxIcon, new LinearLayout.LayoutParams(u(56), u(56)));
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(u(16), 0, 0, 0);
+        LinearLayout top = new LinearLayout(this);
+        top.setGravity(Gravity.BOTTOM);
+        wxTemp = Style.t(this, "", 34, 400, Style.WHITE);
+        top.addView(wxTemp);
+        wxCond = Style.t(this, "", 18, 500, Style.WHITE80);
+        wxCond.setPadding(u(12), 0, 0, u(5));
+        top.addView(wxCond);
+        col.addView(top);
+        wxInside = Style.t(this, "", 16, 400, Style.WHITE70);
+        col.addView(wxInside);
+        c.addView(col, new LinearLayout.LayoutParams(0, -2, 1));
+        wxUnit = Style.t(this, "", 16, 600, Style.WHITE);
+        wxUnit.setGravity(Gravity.CENTER);
+        wxUnit.setPadding(u(16), 0, u(16), 0);
+        wxUnit.setBackground(Style.fill(Style.GLASS, u(22)));
+        wxUnit.setOnClickListener(v -> {
+            Prefs.of(this).raw().edit().putString(Ui.TEMP_UNIT + "_" + person, Tiles.showCelsius ? "F" : "C").apply();
+            applyUnit();
+            renderWeather();
+        });
+        Style.pressable(wxUnit);
+        c.addView(wxUnit, new LinearLayout.LayoutParams(-2, u(44)));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        c.setLayoutParams(lp);
+        return c;
+    }
+
+    /** Tablet unit, unless this person picked their own. */
+    private void applyUnit() {
+        Prefs pr = Prefs.of(this);
+        String own = pr.get(Ui.TEMP_UNIT + "_" + person, "");
+        Tiles.showCelsius = "C".equals(own.isEmpty() ? pr.get(Ui.TEMP_UNIT, "F") : own);
+    }
+
+    private void renderWeather() {
+        if (wxTemp == null) return;
+        Ha.Ent w = ha.states.get(dash.weather());
+        wxIcon.set(w == null ? "" : w.state);
+        wxTemp.setText(w == null ? "–" : Tiles.deg(w.attrs.optString("temperature", "–")) + Tiles.unit());
+        wxCond.setText(w == null ? "" : HomeActivity.condition(w.state));
+        Ha.Ent in = ha.states.get(dash.roomSensor());
+        if (in != null && !in.unavailable()) {
+            String u = in.attrs.optString("unit_of_measurement");
+            boolean temp = "°C".equals(u) || "°F".equals(u);
+            wxInside.setText("Inside " + (temp ? Tiles.deg(in.state, "°C".equals(u)) + Tiles.unit() : in.state));
+        } else wxInside.setText(dash.roomSensor().isEmpty() ? "Pick an indoor sensor in Settings" : "");
+        wxUnit.setText(Tiles.showCelsius ? "°C  ·  °F" : "°F  ·  °C");
     }
 
     private void render() {
+        applyUnit();
+        renderWeather();
         renderAvatars();
         Ha.Ent p = ha.states.get(person);
         String name = p == null ? "" : first(p.name());
@@ -242,9 +307,9 @@ public class BriefActivity extends Activity implements Ha.Listener {
             Ha.Ent e = ha.states.get(id);
             if (e == null) continue;
             boolean sel = id.equals(person);
-            TextView a = Style.t(this, first(e.name()).substring(0, 1).toUpperCase(Locale.getDefault()), 18, 700, sel ? Style.INK : Style.WHITE);
-            a.setGravity(Gravity.CENTER);
-            a.setBackground(Style.fill(sel ? Style.CREAM : Style.GLASS, u(26)));
+            android.widget.FrameLayout a = Avatars.view(this, e, u(46), sel ? Style.CREAM : Style.GLASS, sel ? Style.INK : Style.WHITE, 18);
+            a.setPadding(u(3), u(3), u(3), u(3));
+            a.setBackground(Style.fill(sel ? Style.CREAM : 0x00000000, u(26)));
             a.setContentDescription(e.name());
             a.setOnClickListener(v -> { person = id; finger = null; render(); });
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(u(52), u(52));

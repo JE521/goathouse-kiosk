@@ -54,7 +54,8 @@ final class Goatprint {
 
     static final class Entry {
         String name, finger;
-        boolean admin;
+        String origin = "";        // "" = enrolled on this tablet, else the node it was shared from (GoatprintNode)
+        boolean admin, duress;
         final List<byte[]> templates = new ArrayList<>();
     }
 
@@ -70,10 +71,11 @@ final class Goatprint {
     private final List<Long> failures = new ArrayList<>();
     private volatile List<Entry> gallery = new ArrayList<>();
     private volatile String status = "Starting";
-    private volatile boolean running, attached;
+    private volatile boolean running, attached, loaded;
     private volatile Job job;
     private long lockedUntil, askedPermission;
     private Thread thread;
+    private volatile Thread watchdog;
 
     private static final class Job {
         String name, finger;
@@ -85,8 +87,11 @@ final class Goatprint {
 
     String status() { return status; }
     boolean attached() { return attached; }
-    List<Entry> entries() { return Collections.unmodifiableList(gallery); }
-    boolean hasAdmin() { for (Entry e : gallery) if (e.admin) return true; return false; }
+    List<Entry> entries() {
+        if (!loaded) synchronized (this) { if (!loaded) { gallery = load(); loaded = true; } }
+        return Collections.unmodifiableList(gallery);
+    }
+    boolean hasAdmin() { for (Entry e : entries()) if (e.admin) return true; return false; }
     void addListener(Listener l) { listeners.add(l); }
     void removeListener(Listener l) { listeners.remove(l); }
 
@@ -118,6 +123,7 @@ final class Goatprint {
     void cancelEnroll() { Job j = job; if (j != null) j.cancelled = true; }
 
     synchronized void delete(String name, String finger) {
+        if (!loaded) { gallery = load(); loaded = true; }
         List<Entry> g = new ArrayList<>(gallery);
         for (int i = g.size() - 1; i >= 0; i--) if (g.get(i).name.equals(name) && g.get(i).finger.equals(finger)) g.remove(i);
         save(g);
@@ -126,7 +132,7 @@ final class Goatprint {
     // ---------- reader thread ----------
 
     private void loop() {
-        gallery = load();
+        synchronized (this) { if (!loaded) { gallery = load(); loaded = true; } }
         UsbManager um = (UsbManager) ctx.getSystemService(Context.USB_SERVICE);
         while (running && Thread.currentThread() == thread) {
             UsbDevice d = GoatprintReader.find(um);
@@ -146,6 +152,20 @@ final class Goatprint {
             try {
                 r = new GoatprintReader(um, d);
                 Log.i(TAG, "reader " + r.serial + " open, " + gallery.size() + " fingers enrolled");
+                final GoatprintReader watched = r;
+                Thread dog = new Thread(() -> {          // a USB wait that never returns: close the reader so the loop reopens it
+                    while (!Thread.currentThread().isInterrupted()) {
+                        try { Thread.sleep(2000); } catch (InterruptedException e) { return; }
+                        if (System.currentTimeMillis() - watched.lastActivity > 8000) {
+                            Log.w(TAG, "reader stalled, resetting");
+                            watched.close();
+                            return;
+                        }
+                    }
+                }, "goatprint-watchdog");
+                dog.setDaemon(true);
+                dog.start();
+                watchdog = dog;
                 setStatus(gallery.isEmpty() ? "Ready · nobody enrolled yet" : "Ready");
                 r.light(true);
                 while (running && Thread.currentThread() == thread) {
@@ -161,6 +181,8 @@ final class Goatprint {
                 failJob("Reader error: " + e.getMessage());
                 sleep(2000);
             } finally {
+                Thread dog = watchdog;
+                if (dog != null) dog.interrupt();
                 if (r != null) r.close();
             }
         }
@@ -168,10 +190,11 @@ final class Goatprint {
 
     private void identifyOnce(GoatprintReader r) throws Exception {
         if (lockedUntil != 0) {
-            if (System.currentTimeMillis() < lockedUntil) { Thread.sleep(500); return; }
+            if (System.currentTimeMillis() < lockedUntil) { r.lastActivity = System.currentTimeMillis(); Thread.sleep(500); return; }
             lockedUntil = 0;
             r.light(true);
             setStatus("Ready");
+            GoatprintNode.get(ctx).event("lockout_end");
         }
         List<byte[]> probes = probes(r, 1000, PROBES);
         if (probes.isEmpty()) return;
@@ -187,6 +210,10 @@ final class Goatprint {
             Log.i(TAG, (m.score >= SECURE ? "match_secure " : "match ") + m.entry.name + " " + m.entry.finger + " score " + m.score);
             Entry e = m.entry;
             int score = m.score;
+            GoatprintNode node = GoatprintNode.get(ctx);
+            // duress alert first, back to back with the event on one queue: HA's replay window is 256 counter steps (ms here)
+            if (e.duress) node.alert("person", e.name, "finger", e.finger, "score", score);
+            node.event(score >= SECURE ? "match_secure" : "match", "person", e.name, "finger", e.finger, "score", score);
             main.post(() -> {
                 for (Listener l : listeners) l.onGoatprint("match " + e.name);
                 Intent i = new Intent(ctx, BriefActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -202,8 +229,10 @@ final class Goatprint {
             failures.clear();
             failures.addAll(keep);
             Log.i(TAG, "no_match score " + Math.max(m.score, 0) + " runner-up " + Math.max(m.runnerUp, 0));
+            GoatprintNode.get(ctx).event("no_match", "score", Math.max(m.score, 0));
             if (failures.size() >= LOCK_FAILS) {
                 lockedUntil = now + LOCK_MS;
+                GoatprintNode.get(ctx).event("lockout", "seconds", (int) (LOCK_MS / 1000), "where", "scanner");
                 failures.clear();
                 setStatus("Locked for a minute");
                 r.flash(6, 80, true);
@@ -220,7 +249,8 @@ final class Goatprint {
             say(j, "Admin: place YOUR finger to approve", 0, false, false);
             List<byte[]> probes = probes(r, 30000, 3);
             Match m = probes.isEmpty() ? new Match() : bestMatch(probes, gallery);
-            if (m.entry == null || m.score < APPROVE || !isAdmin(m.entry.name)) {
+            // only a finger enrolled HERE by an admin approves: imported fingers never carry admin rights
+            if (m.entry == null || m.score < APPROVE || !m.entry.origin.isEmpty() || !isAdmin(m.entry.name)) {
                 say(j, "Not approved" + (m.score >= 0 ? " (score " + m.score + ")" : ""), 0, true, true);
                 return;
             }
@@ -340,6 +370,7 @@ final class Goatprint {
                 JSONObject o = a.getJSONObject(i);
                 Entry e = new Entry();
                 e.name = o.getString("name"); e.finger = o.getString("finger"); e.admin = o.optBoolean("admin");
+                e.origin = o.optString("origin", ""); e.duress = o.optBoolean("duress");
                 JSONArray t = o.getJSONArray("templates");
                 for (int k = 0; k < t.length(); k++) e.templates.add(Base64.decode(t.getString(k), Base64.NO_WRAP));
                 out.add(e);
@@ -356,7 +387,8 @@ final class Goatprint {
             for (Entry e : g) {
                 JSONArray t = new JSONArray();
                 for (byte[] b : e.templates) t.put(Base64.encodeToString(b, Base64.NO_WRAP));
-                a.put(new JSONObject().put("name", e.name).put("finger", e.finger).put("admin", e.admin).put("templates", t));
+                a.put(new JSONObject().put("name", e.name).put("finger", e.finger).put("admin", e.admin)
+                        .put("origin", e.origin).put("duress", e.duress).put("templates", t));
             }
             byte[] iv = new byte[12];
             new SecureRandom().nextBytes(iv);
@@ -371,6 +403,39 @@ final class Goatprint {
             Log.e(TAG, "vault save failed: " + e);
         }
     }
+
+    /**
+     * vault.mirror: make {@code person}'s fingers from {@code src} exactly {@code fingers}. Never overwrites a finger
+     * enrolled on this tablet, never grants admin. Returns a short summary.
+     */
+    synchronized String mirror(String person, String src, List<GoatprintNode.Finger> fingers) {
+        if (!loaded) { gallery = load(); loaded = true; }      // MQTT can deliver before the reader thread loads the vault
+        List<Entry> g = new ArrayList<>(gallery);
+        java.util.Set<String> keep = new java.util.HashSet<>();
+        for (GoatprintNode.Finger f : fingers) keep.add(f.finger);
+        int removed = 0;
+        for (int i = g.size() - 1; i >= 0; i--) {
+            Entry e = g.get(i);
+            if (e.name.equals(person) && e.origin.equals(src)) { g.remove(i); if (!keep.contains(e.finger)) removed++; }
+        }
+        List<String> kept = new ArrayList<>(), added = new ArrayList<>();
+        for (GoatprintNode.Finger f : fingers) {
+            boolean local = false;
+            for (Entry e : g) if (e.name.equals(person) && e.finger.equals(f.finger) && e.origin.isEmpty()) local = true;
+            if (local) { kept.add(f.finger); continue; }
+            Entry e = new Entry();
+            e.name = person; e.finger = f.finger; e.origin = src; e.duress = f.duress;
+            e.templates.addAll(f.templates.subList(0, Math.min(MAX_TEMPLATES, f.templates.size())));
+            g.add(e);
+            added.add(f.finger);
+        }
+        save(g);
+        return (added.isEmpty() ? "" : android.text.TextUtils.join(", ", added)) + (removed > 0 ? (added.isEmpty() ? "" : "; ") + removed + " removed" : "")
+                + (kept.isEmpty() ? "" : "; kept local " + android.text.TextUtils.join(", ", kept));
+    }
+
+    /** The vault's AES key, also used to seal the node signing seed (GoatprintNode). */
+    byte[] vaultKey() throws Exception { return key(); }
 
     private byte[] aesKey;
 

@@ -58,11 +58,34 @@ approve it, so a passer-by can't add themselves.
 
 - Only templates are stored (minutiae, not images), AES-256-GCM encrypted in app-private storage. The key is
   wrapped by an Android Keystore RSA key (Android 5 has no Keystore AES).
-- Templates and images never leave the tablet.
+- Images never leave the tablet. Templates leave only as end-to-end encrypted share bundles, and this app only
+  receives those (it never sends its own enrolments anywhere).
 - There's no liveness detection. Treat a match as "someone with this print": fine for greetings and lights, not for
   outside doors.
 
-## Not done yet
+## On the network (`GoatprintNode.java`, `Mqtt.java`)
 
-Publishing signed match events to MQTT (same topics and Ed25519 signatures as the Linux nodes) so Home Assistant
-automations can react to scans.
+The tablet is a goatprint node like the Linux daemon (goatprint `docs/ANDROID.md` §5b and §6):
+
+- **Identity.** An Ed25519 key, its seed sealed with the vault key, so it survives app updates but not an uninstall
+  or a data wipe. The X25519 "box" key is derived from it (HKDF-SHA256, info `goatprint box key v1`).
+  Settings → Fingerprints → *This tablet's identity* shows the `gpnode1:<node>:<ed25519>:<x25519>` line and a QR code.
+- **Events.** `match`, `match_secure`, `no_match`, `lockout`, `lockout_end` and `duress` alerts go to
+  `goatprint/<node>/event` (and `/last`, `/alert`). They're signed over canonical JSON exactly like `daemon.py`.
+  `ctr` is `max(last + 1, now in ms)`, persisted before use, so it never repeats even after a data wipe.
+  `ts` must be within 300 s of Home Assistant's clock, so keep the tablet on NTP.
+  HA discovery and the retained `goatprint/<node>/pubkey` are published on connect.
+- **Enroll once, use everywhere.** Retained bundles on `goatprint/<node>/inbox/<sender>/<person>` from accepted
+  nodes are checked like `share.py` (addressee, sender key, signature, AES-GCM, sanity, newer `ts`), mirrored into
+  the vault, and then cleared. Imported fingers show "from <node>". They never overwrite a finger enrolled here,
+  never get admin, and can't approve enrolments.
+- **MQTT.** A small built-in MQTT 3.1.1 client over TLS. It trusts the system CAs plus the bundled ISRG Root X1/X2
+  (`res/raw/isrg_roots.pem`), because Android 5 to 7.0 don't know Let's Encrypt, and it checks the hostname.
+- **Setup** (the phone setup page, *Fingerprints* section):
+  - broker host (must match the certificate) and port 8883
+  - node id (default `kiosk-<layout>`)
+  - user (default `goatprint-<node>`) and password, from goatprint's `examples/mosquitto/goatprint-add-node.sh`;
+    the ACL needs `topic read goatprint/<node>/inbox/#`
+  - the enrolling node's `goatprintctl id` to accept
+- **Self-test.** Settings → Fingerprints → *Self-test* checks signing, the box key and bundle import against
+  goatprint's published test vectors (`assets/goatprint-bundle-v1.json`).

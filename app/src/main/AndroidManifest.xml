@@ -48,11 +48,14 @@
             android:configChanges="orientation|screenSize|screenLayout" />
         <activity android:name=".BriefActivity" android:exported="false" android:launchMode="singleTask"
             android:windowSoftInputMode="stateAlwaysHidden|adjustPan" android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
+        <activity android:name=".WhoActivity" android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
         <activity android:name=".CastActivity" android:exported="false" android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
         <activity android:name=".JellyfinLinkActivity" android:exported="false" android:windowSoftInputMode="adjustPan"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
         <activity android:name=".GoatprintEnrollActivity" android:exported="false" android:launchMode="singleTask"
+            android:taskAffinity="org.goathouse.kiosk.enroll" android:excludeFromRecents="true"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
         <activity android:name=".GoatprintTestActivity" android:exported="false" android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />

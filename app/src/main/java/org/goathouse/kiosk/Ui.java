@@ -115,6 +115,9 @@ final class Ui {
         }
     }
 
+    /** Temperature unit for the whole tablet: "F" (default) or "C". A person's brief can override it ("temp_unit_<person>"). */
+    static final String TEMP_UNIT = "temp_unit";
+
     /** 12-hour clock unless turned on in Settings (ignores the tablet's own Android setting). */
     static boolean h24(Context c) { return Prefs.of(c).on("clock_24", false); }
 

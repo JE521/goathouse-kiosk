@@ -148,12 +148,67 @@ final class SetupServer {
         String token = first(f, Prefs.HA_TOKEN);
         if (f.containsKey("clear_token")) p.put(Prefs.HA_TOKEN, "");
         else if (token != null && !token.trim().isEmpty()) p.put(Prefs.HA_TOKEN, token.trim());
+        if (f.containsKey("gp_present")) saveGoatprint(p, f);
         if (f.containsKey("tiles_present")) {
             List<String> picked = f.containsKey("tile") ? f.get("tile") : new ArrayList<>();
             StringBuilder b = new StringBuilder();
             for (String id : picked) { if (b.length() > 0) b.append('\n'); b.append(id); }
             p.put(Prefs.TILES, b.toString());
         }
+    }
+
+    /** goatprint node: broker login, node id, and which enrolling nodes this tablet accepts fingers from. */
+    private String gpError = "";
+
+    private void saveGoatprint(Prefs p, Map<String, List<String>> f) {
+        GoatprintNode n = GoatprintNode.get(ctx);
+        String before = p.get(GoatprintNode.HOST) + p.get(GoatprintNode.PORT) + p.get(GoatprintNode.NODE) + p.get(GoatprintNode.USER) + p.get(GoatprintNode.PASS);
+        for (String k : new String[]{GoatprintNode.HOST, GoatprintNode.PORT, GoatprintNode.NODE, GoatprintNode.USER}) {
+            String v = first(f, k);
+            if (v != null) p.put(k, v.trim());
+        }
+        String pw = first(f, GoatprintNode.PASS);
+        if (f.containsKey("gp_clear_pass")) p.put(GoatprintNode.PASS, "");
+        else if (pw != null && !pw.trim().isEmpty()) p.put(GoatprintNode.PASS, pw.trim());
+        if (f.containsKey("gp_unaccept")) for (String peer : f.get("gp_unaccept")) n.unaccept(peer);
+        gpError = "";
+        String add = first(f, "gp_accept_add");
+        if (add != null) for (String line : add.split("\\s+")) {
+            if (line.trim().isEmpty()) continue;
+            try { n.accept(line); } catch (Exception e) { gpError = e.getMessage(); }
+        }
+        String after = p.get(GoatprintNode.HOST) + p.get(GoatprintNode.PORT) + p.get(GoatprintNode.NODE) + p.get(GoatprintNode.USER) + p.get(GoatprintNode.PASS);
+        if (!before.equals(after)) n.start();
+    }
+
+    private void goatprintForm(StringBuilder b, Prefs p) {
+        GoatprintNode n = GoatprintNode.get(ctx);
+        b.append("<section><h2>Fingerprints (goatprint)</h2><p class=sub>Signed scan events to Home Assistant over MQTT, and fingers enrolled on another goatprint node (the desk PC) imported here so nobody enrolls twice.</p>");
+        boolean ok = n.status().equals("MQTT connected");
+        b.append("<p class='st ").append(ok ? "good'>✓ " : "bad'>✕ ").append(esc(n.status())).append("</p>");
+        b.append("<label>This tablet's identity: on the enrolling node run <code>sudo goatprintctl trust &lt;this line&gt;</code></label>")
+                .append("<textarea readonly rows=3 onclick='this.select()'>").append(esc(n.identity())).append("</textarea>");
+        b.append("<label>Broker host (blank = no MQTT)</label><input name='").append(GoatprintNode.HOST).append("' value='").append(esc(p.get(GoatprintNode.HOST)))
+                .append("' placeholder='mqtt.example.org (must match the TLS certificate)' autocapitalize=off autocorrect=off spellcheck=false>");
+        b.append("<label>Port (8883 = TLS)</label><input name='").append(GoatprintNode.PORT).append("' value='").append(esc(p.get(GoatprintNode.PORT, "8883"))).append("'>");
+        b.append("<label>Node id</label><input name='").append(GoatprintNode.NODE).append("' value='").append(esc(p.get(GoatprintNode.NODE)))
+                .append("' placeholder='").append(esc(n.node())).append("' autocapitalize=off autocorrect=off spellcheck=false>");
+        b.append("<label>Broker user</label><input name='").append(GoatprintNode.USER).append("' value='").append(esc(p.get(GoatprintNode.USER)))
+                .append("' placeholder='goatprint-").append(esc(n.node())).append("' autocapitalize=off autocorrect=off spellcheck=false>");
+        boolean saved = !p.get(GoatprintNode.PASS).isEmpty();
+        b.append("<label>Broker password</label><input type=password name='").append(GoatprintNode.PASS).append("' placeholder='")
+                .append(saved ? "saved, leave blank to keep" : "printed once by goatprint-add-node.sh").append("' autocomplete=off>");
+        if (saved) b.append("<label class=chk><input type=checkbox name=gp_clear_pass> remove saved password</label>");
+        Map<String, String> acc = n.accepted();
+        b.append("<label>Accept enrollments from</label>");
+        if (acc.isEmpty()) b.append("<p class=hint>Nobody yet.</p>");
+        for (Map.Entry<String, String> e : acc.entrySet())
+            b.append("<label class=chk><input type=checkbox name=gp_unaccept value='").append(esc(e.getKey())).append("'> <span>remove <b>")
+                    .append(esc(e.getKey())).append("</b><small>").append(esc(e.getValue())).append("</small></span></label>");
+        if (!gpError.isEmpty()) b.append("<p class='st bad'>✕ ").append(esc(gpError)).append("</p>");
+        b.append("<textarea name=gp_accept_add rows=2 placeholder='paste `goatprintctl id` from the enrolling node (gpnode1:…)'></textarea>");
+        b.append("<p class=hint>Imported fingers open that person's page but never approve new enrollments. Fingerprint data only travels encrypted to this tablet.</p>");
+        b.append("<input type=hidden name=gp_present value=1></section>");
     }
 
     private String form(boolean justSaved) {
@@ -212,6 +267,7 @@ final class SetupServer {
         for (int i = 0; i < days.length; i++)
             b.append("<option value=").append(i).append(dash.trashDay() == i ? " selected" : "").append(">").append(days[i]).append("</option>");
         b.append("</select></section>");
+        goatprintForm(b, p);
         b.append("<button type=submit>Save</button></form>");
         return page("Tablet setup", b.toString());
     }

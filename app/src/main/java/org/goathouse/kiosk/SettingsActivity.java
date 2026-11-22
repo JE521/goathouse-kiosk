@@ -109,6 +109,11 @@ public class SettingsActivity extends Activity {
             header(body, "Tablet");
             g = group(body);
             toggle(g, "24-hour clock", "clock_24", false);
+            row(g, "Temperature unit", "C".equals(prefs.get(Ui.TEMP_UNIT, "F")) ? "°C" : "°F (default)",
+                    v -> show(textChoice("Temperature unit", Ui.TEMP_UNIT, "F", new String[]{"F", "C"})));
+            String rs = Dash.of(this).roomSensor();
+            Ha.Ent rse = Ha.get(this).states.get(rs);
+            row(g, "Indoor temperature", rs.isEmpty() ? "Pick a sensor" : rse != null ? rse.name() : rs, v -> show(pickSensor()));
             row(g, "Android settings", "Wi-Fi, sound, date", v -> {
                 try { startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS)); } catch (Exception ignored) { }
             });
@@ -116,8 +121,7 @@ public class SettingsActivity extends Activity {
             row(g, "Jellyfin cast", jfl.linked() ? jfl.status : "Not linked · tap to link",
                     v -> startActivity(new Intent(this, JellyfinLinkActivity.class)));
             Goatprint gp = Goatprint.get(this);
-            if (gp.attached() || !gp.entries().isEmpty())
-                row(g, "Fingerprints", gp.entries().size() + " enrolled · " + gp.status(), v -> show(fingerprints()));
+            row(g, "Fingerprints", gp.entries().size() + " enrolled · " + gp.status(), v -> show(fingerprints()));
             for (String pkg : new String[]{"dev.imranr.obtainium.fdroid", "dev.imranr.obtainium"}) {
                 Intent li = getPackageManager().getLaunchIntentForPackage(pkg);
                 if (li != null) { row(g, "Obtainium", "App updates", v -> { try { startActivity(li); } catch (Exception ignored) { } }); break; }
@@ -136,6 +140,26 @@ public class SettingsActivity extends Activity {
         });
     }
 
+    /** Temperature sensors from HA (device_class temperature or a °F/°C unit) for the indoor reading. */
+    private Page pickSensor() {
+        return page("Indoor temperature", body -> {
+            LinearLayout g = group(body);
+            String cur = Dash.of(this).roomSensor();
+            row(g, "None", cur.isEmpty() ? "✓" : "", x -> { prefs.put(Dash.ROOM_SENSOR, ""); onBackPressed(); });
+            java.util.List<Ha.Ent> list = new java.util.ArrayList<>();
+            for (Ha.Ent e : Ha.get(this).states.values()) {
+                if (!"sensor".equals(e.domain()) || e.unavailable()) continue;
+                String u = e.attrs.optString("unit_of_measurement");
+                if ("temperature".equals(e.attrs.optString("device_class")) || "°F".equals(u) || "°C".equals(u)) list.add(e);
+            }
+            java.util.Collections.sort(list, (a, b) -> a.name().compareToIgnoreCase(b.name()));
+            for (Ha.Ent e : list) {
+                String val = Tiles.deg(e.state, "°C".equals(e.attrs.optString("unit_of_measurement"))) + Tiles.unit();
+                row(g, e.name(), e.id.equals(cur) ? "✓" : val, x -> { prefs.put(Dash.ROOM_SENSOR, e.id); onBackPressed(); });
+            }
+        });
+    }
+
     // ---------- goatprint ----------
 
     private Goatprint.Entry pendingDelete;
@@ -149,11 +173,44 @@ public class SettingsActivity extends Activity {
             g = group(body);
             if (gp.entries().isEmpty()) info(g, "Nobody yet", "The first finger becomes the admin");
             for (Goatprint.Entry e : gp.entries())
-                row(g, Tiles.cap(e.name) + (e.admin ? " · admin" : ""), e.finger.replace('_', ' ') + " · " + e.templates.size() + " samples",
+                row(g, Tiles.cap(e.name) + (e.admin ? " · admin" : "") + (e.duress ? " · duress" : ""), e.finger.replace('_', ' ') + " · " + e.templates.size() + " samples"
+                        + (e.origin.isEmpty() ? "" : " · from " + e.origin),
                         v -> { pendingDelete = e; show(confirmDelete()); });
             header(body, "Add");
             g = group(body);
             row(g, "Add a finger", gp.hasAdmin() ? "An admin finger approves" : "First finger becomes admin", v -> GoatprintEnrollActivity.open(this, null));
+            GoatprintNode n = GoatprintNode.get(this);
+            header(body, "Home network");
+            g = group(body);
+            info(g, "Events to Home Assistant", n.status());
+            row(g, "This tablet's identity", n.node(), v -> show(identity()));
+            java.util.Map<String, String> acc = n.accepted();
+            info(g, "Takes enrollments from", acc.isEmpty() ? "Nobody · add one in Setup" : android.text.TextUtils.join(", ", acc.keySet()));
+            row(g, "Self-test", "Signing and import against goatprint's test vectors", v -> show(page("Self-test", b2 -> {
+                android.widget.TextView t = Style.t(this, GoatprintNode.selfTest(this), 16, 400, Style.WHITE80);
+                t.setTypeface(android.graphics.Typeface.MONOSPACE);
+                b2.addView(t);
+            })));
+        });
+    }
+
+    /** QR + text of the gpnode1 line, for `sudo goatprintctl trust <line>` on the enrolling node. */
+    private Page identity() {
+        return page("This tablet's identity", body -> {
+            String id = GoatprintNode.get(this).identity();
+            android.widget.ImageView q = new android.widget.ImageView(this);
+            q.setImageBitmap(SetupActivity.qr(id, Style.u(360)));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Style.u(360), Style.u(360));
+            lp.gravity = android.view.Gravity.CENTER_HORIZONTAL;
+            lp.topMargin = lp.bottomMargin = Style.u(16);
+            body.addView(q, lp);
+            android.widget.TextView t = Style.t(this, id, 15, 400, Style.WHITE70);
+            t.setTextIsSelectable(true);
+            t.setTypeface(android.graphics.Typeface.MONOSPACE);
+            body.addView(t);
+            android.widget.TextView h = Style.t(this, "On the enrolling node (the desk PC): sudo goatprintctl trust <this line>. Then tablet Setup → Fingerprints: paste that node's `goatprintctl id` to accept its enrollments.", 15, 400, Style.WHITE60);
+            h.setPadding(0, Style.u(16), 0, 0);
+            body.addView(h);
         });
     }
 

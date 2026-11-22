@@ -139,8 +139,8 @@ final class Tiles {
                 case "sensor": {
                     String unit = e.attrs.optString("unit_of_measurement", "");
                     String val = e.state;
-                    if ("°C".equals(unit)) {              // always Fahrenheit
-                        try { val = String.valueOf(Double.parseDouble(e.state) * 9 / 5 + 32); unit = "°F"; } catch (Exception ignored) { }
+                    if ("°C".equals(unit) || "°F".equals(unit)) {      // temperatures follow the display unit
+                        try { val = String.valueOf(convert(Double.parseDouble(e.state), "°C".equals(unit), showCelsius)); unit = unit(); } catch (Exception ignored) { }
                     }
                     s = num(val) + (unit.isEmpty() ? "" : (unit.startsWith("°") || unit.equals("%") ? "" : " ") + unit);
                     break;
@@ -215,14 +215,25 @@ final class Tiles {
 
     static String cap(String s) { return s == null || s.isEmpty() ? "" : Character.toUpperCase(s.charAt(0)) + s.substring(1).replace('_', ' '); }
 
-    /** Home Assistant reports temperatures in °C (set from get_config); the kiosk always shows °F. */
+    /** Home Assistant reports temperatures in °C (set from get_config). */
     static volatile boolean haCelsius;
+    /** What this screen shows: °F by default; Settings or a person's brief can switch to °C (set on every resume). */
+    static volatile boolean showCelsius;
 
-    /** A temperature from HA, shown in °F. */
-    static String deg(String s) {
-        if (!haCelsius) return num(s);
-        try { return num(String.valueOf(Double.parseDouble(s) * 9 / 5 + 32)); } catch (Exception e) { return num(s); }
+    static double convert(double v, boolean fromC, boolean toC) {
+        if (fromC == toC) return v;
+        return toC ? (v - 32) * 5 / 9 : v * 9 / 5 + 32;
     }
+
+    /** A temperature from HA (weather, forecast) in the display unit. */
+    static String deg(String s) { return deg(s, haCelsius); }
+
+    /** A temperature reported in °C (fromC) or °F, in the display unit. */
+    static String deg(String s, boolean fromC) {
+        try { return num(String.valueOf(convert(Double.parseDouble(s), fromC, showCelsius))); } catch (Exception e) { return num(s); }
+    }
+
+    static String unit() { return showCelsius ? "°C" : "°F"; }
 
     static String num(String s) {
         try {

@@ -30,6 +30,7 @@ final class Style {
      */
     static void brightness(android.app.Activity a, boolean nightClock) {
         Prefs p = Prefs.of(a);
+        Tiles.showCelsius = "C".equals(p.get(Ui.TEMP_UNIT, "F"));
         boolean night = false;
         if (p.on(Prefs.NIGHT_DIM, true)) {
             int from = p.num(Prefs.NIGHT_FROM, 22), to = p.num(Prefs.NIGHT_TO, 7);

@@ -29,6 +29,9 @@ final class GoatprintReader {
     private final UsbRequest[] reqs = new UsbRequest[CHUNKS];
     private final ByteBuffer[] bufs = new ByteBuffer[CHUNKS];
     private int slot, frameNo;
+    /** Last time a transfer finished; the engine's watchdog closes a reader that stops moving (requestWait has no timeout before API 26). */
+    volatile long lastActivity = System.currentTimeMillis();
+    private volatile boolean closed;
     private boolean lightOn;
     String serial = "", info = "";
 
@@ -86,7 +89,7 @@ final class GoatprintReader {
             ctrlIn(slot == 0 ? 0xe1 : 0xe2, 6);
             for (int done = 0; done < CHUNKS; done++) {
                 UsbRequest r = conn.requestWait();
-                if (r == null) throw new Exception("frame read failed");
+                if (r == null || closed) throw new Exception("frame read failed");
                 int i = (Integer) r.getClientData();
                 ByteBuffer b = bufs[i];
                 b.rewind();
@@ -100,6 +103,7 @@ final class GoatprintReader {
             slot ^= 1;
             frameNo++;
         }
+        lastActivity = System.currentTimeMillis();
         return frame;
     }
 
@@ -109,7 +113,9 @@ final class GoatprintReader {
         lightOn = on;
     }
 
-    void close() {
+    synchronized void close() {
+        if (closed) return;
+        closed = true;
         try { ctrlOut(0xc2, new byte[]{0x00}); } catch (Exception ignored) { }   // light off, whatever we think its state is
         cancelAll();
         for (UsbRequest r : reqs) if (r != null) r.close();
