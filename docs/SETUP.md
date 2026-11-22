@@ -71,7 +71,11 @@ Now Playing follows this tablet's player, or the group it's playing in.
 ## 6. Jellyfin cast target
 
 Settings → **Jellyfin cast** → enter your server's LAN URL → **Get a code**. In any signed-in Jellyfin app go to
-profile → **Quick Connect** and enter the code. The tablet then shows up in the cast menu. No password is stored.
+profile → **Quick Connect** and enter the code. The tablet then shows up in that account's cast menu. No password is stored.
+
+A Jellyfin session belongs to one user, so **link every account that should be able to cast**: tap **Add an account** and
+repeat with each person's Jellyfin app. The tablet keeps one session per account (each with its own device id) and plays
+whatever any of them casts. Remove an account from the same screen.
 Video is transcoded to ≤ 720p H.264 so 2014-era hardware decoders cope.
 
 ## 7. Fingerprint reader (optional)
